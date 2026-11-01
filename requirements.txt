@@ -1,0 +1,23 @@
+# =============
+# チュートリアルライブラリ
+# =============
+genesis-world
+torch == 2.15.0 # 過去まだ触った事無いから, 一旦最新版で固定
+torchvision
+torchaudio
+ompl==2.0.1 
+# colcon-common-extensions
+# rosdep
+rsl-rl-lib
+
+# pydantic 
+# pydantic-core
+# typing-inspection==0.4.4
+# typing-inspect
+# =============
+# 個人で使うライブラリ
+# =============
+ipykernel
+ipynb
+numpy
+pandas < 3

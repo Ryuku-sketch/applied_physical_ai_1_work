@@ -1,0 +1,131 @@
+#========================================
+# フルインフラの開発: ROS2-GUI
+#========================================
+
+FROM ubuntu:26.04
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=lyrical
+
+# ========================================
+# 仮想デスクトップ + Python / 開発ツール
+# ========================================
+RUN apt-get update && \
+    apt-get install -y \
+        software-properties-common \
+        gpg \
+        curl \
+        locales && \
+    add-apt-repository -y universe && \
+    add-apt-repository -y ppa:deadsnakes/ppa
+RUN apt-get update && \
+    apt-get install -y \
+        python3.13 \
+        python3.13-venv \
+        python3.13-dev \
+        ubuntu-mate-desktop \
+        tigervnc-standalone-server \
+        tigervnc-common \
+        tigervnc-tools \
+        build-essential \
+        novnc \
+        websockify \
+        dbus-x11 \
+        terminator \
+        # python3-full \
+        libgl1 \
+        libegl1 \
+        libegl-mesa0 \
+        libgl1-mesa-dri \
+        libgles2 \
+        libgbm1 \
+        libglvnd0 \
+        libglvnd-dev \
+        git \
+        curl \
+        wget \
+        gpg \
+        locales \
+        libgl1 \
+        software-properties-common && \
+    add-apt-repository universe && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# ========================================
+# ROS 2 APT Repository
+# ========================================
+RUN apt-get update && \
+    apt-get install -y curl && \
+    ROS_APT_SOURCE_VERSION=$(curl -s \
+        https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
+        | grep -F "tag_name" | awk -F'"' '{print $4}') && \
+    curl -L -o /tmp/ros2-apt-source.deb \
+        "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && \
+    rm /tmp/ros2-apt-source.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# ROS 2 + Gazebo
+# ========================================
+RUN apt-get update && \
+    apt-get install -y \
+        ros-lyrical-desktop \
+        ros-lyrical-ros-gz \
+        ros-dev-tools \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# rosdep初期化
+RUN rosdep init
+
+# ========================================
+# GUI用ユーザー
+# ========================================
+RUN useradd -m -s /bin/bash desktop && \
+    echo "desktop:password" | chpasswd
+USER desktop
+WORKDIR /home/desktop
+# ========================================
+# VNC設定
+# ========================================
+RUN mkdir -p /home/desktop/.vnc && \
+    echo "password" | vncpasswd -f > /home/desktop/.vnc/passwd && \
+    chmod 600 /home/desktop/.vnc/passwd
+# MATE Desktop起動設定
+RUN printf '#!/bin/sh\n' > /home/desktop/.vnc/xstartup && \
+    printf 'exec dbus-launch --exit-with-session mate-session\n' >> /home/desktop/.vnc/xstartup && \
+    chmod +x /home/desktop/.vnc/xstartup
+EXPOSE 80
+
+# ========================================
+# モデル開発環境構築
+# ========================================
+# /app:作業環境-folderをmountして作業する環境
+RUN mkdir -p /home/desktop/app
+# /dev: 開発に必要なfolder
+RUN mkdir -p /home/desktop/dev
+COPY requirements.txt /home/desktop/dev
+RUN python3.13 -m venv /home/desktop/venv
+ENV PATH="/home/desktop/venv/bin:$PATH"
+
+RUN cd /home/desktop/dev
+# Pythonライブラリ
+RUN pip install -r /home/desktop/dev/requirements.txt
+
+# ========================================
+# Middlewareのセットアップ
+# ========================================
+RUN echo "source /opt/ros/lyrical/setup.bash" >> /home/desktop/.bashrc
+
+# ========================================
+# 起動
+# ========================================
+CMD ["bash", "-c", "\
+    source /opt/ros/lyrical/setup.bash && \
+    vncserver :1 -geometry 1280x800 -localhost no && \
+    exec websockify --web=/usr/share/novnc 0.0.0.0:80 localhost:5901 \
+"]
